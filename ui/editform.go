@@ -19,6 +19,7 @@ const (
 	fieldUser
 	fieldPort
 	IdentityFieldIndex
+	fieldProxyJump
 	numFixedFields
 )
 
@@ -28,6 +29,7 @@ var fixedLabels = [numFixedFields]string{
 	fieldUser:          "User",
 	fieldPort:          "Port",
 	IdentityFieldIndex: "IdentityFile",
+	fieldProxyJump:     "ProxyJump",
 }
 
 type envInput struct {
@@ -69,6 +71,8 @@ func NewEditForm(h ssh.Host, adding bool, s theme.Styles) EditForm {
 	}
 	f.inputs[fieldPort].SetValue(strconv.Itoa(port))
 	f.inputs[IdentityFieldIndex].SetValue(h.IdentityFile)
+	f.inputs[IdentityFieldIndex].Placeholder = "space to browse"
+	f.inputs[fieldProxyJump].SetValue(h.ProxyJump)
 
 	for _, e := range h.EnvVars {
 		f.envs = append(f.envs, newEnvInput(e.Name, e.Value))
@@ -199,6 +203,7 @@ func (f *EditForm) Host() ssh.Host {
 	h.Hostname = strings.TrimSpace(f.inputs[fieldHostname].Value())
 	h.User = strings.TrimSpace(f.inputs[fieldUser].Value())
 	h.IdentityFile = strings.TrimSpace(f.inputs[IdentityFieldIndex].Value())
+	h.ProxyJump = strings.TrimSpace(f.inputs[fieldProxyJump].Value())
 
 	h.Port = 22
 	if n, err := strconv.Atoi(strings.TrimSpace(f.inputs[fieldPort].Value())); err == nil && n > 0 {
@@ -230,10 +235,6 @@ func (f EditForm) View() string {
 	for i := range f.inputs {
 		b.WriteString(f.renderField(fixedLabels[i], &f.inputs[i], f.focus == i))
 		b.WriteByte('\n')
-		if i == IdentityFieldIndex {
-			b.WriteString(s.Label.Render("    (space/f to browse keys)"))
-			b.WriteByte('\n')
-		}
 	}
 
 	b.WriteByte('\n')

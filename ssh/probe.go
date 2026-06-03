@@ -24,26 +24,14 @@ type ConnectResultMsg struct {
 // blocks the UI; completion is reported via ConnectResultMsg.
 func Probe(h Host) tea.Cmd {
 	return func() tea.Msg {
-		port := h.Port
-		if port == 0 {
-			port = 22
-		}
-
-		args := []string{
+		// Non-interactive options, then the shared connection args, then a
+		// no-op remote command so a successful login exits immediately.
+		args := append([]string{
 			"-o", "BatchMode=yes",
 			"-o", "ConnectTimeout=5",
 			"-o", "StrictHostKeyChecking=accept-new",
-		}
-		if h.IdentityFile != "" {
-			args = append(args, "-i", ExpandPath(h.IdentityFile))
-		}
-		args = append(args, "-p", strconv.Itoa(port))
-
-		target := h.Hostname
-		if h.User != "" {
-			target = h.User + "@" + h.Hostname
-		}
-		args = append(args, target, "exit")
+		}, ConnectArgs(h)...)
+		args = append(args, "exit")
 
 		start := time.Now()
 		out, err := exec.Command("ssh", args...).CombinedOutput()
@@ -58,6 +46,33 @@ func Probe(h Host) tea.Cmd {
 		}
 		return ConnectResultMsg{HostAlias: h.Alias, OK: true, ElapsedMs: elapsed}
 	}
+}
+
+// ConnectArgs builds the ssh command-line arguments common to probing and
+// interactive connection: identity file, jump host, port and target. Both
+// callers reconstruct the connection from the in-memory model rather than
+// relying on the alias, so every option that affects reachability — including
+// ProxyJump — must be passed explicitly here.
+func ConnectArgs(h Host) []string {
+	port := h.Port
+	if port == 0 {
+		port = 22
+	}
+
+	var args []string
+	if h.IdentityFile != "" {
+		args = append(args, "-i", ExpandPath(h.IdentityFile))
+	}
+	if h.ProxyJump != "" {
+		args = append(args, "-J", h.ProxyJump)
+	}
+	args = append(args, "-p", strconv.Itoa(port))
+
+	target := h.Hostname
+	if h.User != "" {
+		target = h.User + "@" + h.Hostname
+	}
+	return append(args, target)
 }
 
 // ExpandPath expands a leading ~ to the user's home directory. ssh would do

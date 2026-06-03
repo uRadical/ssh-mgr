@@ -113,6 +113,9 @@ func hostLines(h Host) []string {
 	if h.IdentityFile != "" {
 		lines = append(lines, "    IdentityFile "+quoteIfSpaces(h.IdentityFile))
 	}
+	if h.ProxyJump != "" {
+		lines = append(lines, "    ProxyJump "+quoteIfSpaces(h.ProxyJump))
+	}
 	for _, e := range h.EnvVars {
 		if e.Name == "" {
 			continue

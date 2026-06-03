@@ -39,6 +39,7 @@ func RenderDetail(h ssh.Host, s theme.Styles) string {
 	row("User", h.User)
 	row("Port", fmt.Sprintf("%d", port))
 	row("IdentityFile", h.IdentityFile)
+	row("ProxyJump", h.ProxyJump)
 
 	b.WriteByte('\n')
 	b.WriteString(s.Label.Render("SetEnv"))

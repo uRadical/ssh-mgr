@@ -41,6 +41,7 @@ type Host struct {
 	User         string
 	Port         int
 	IdentityFile string
+	ProxyJump    string
 	EnvVars      []EnvVar
 	Disabled     bool
 
@@ -152,6 +153,7 @@ func enabledHost(cfg *ssh_config.Config, alias string) Host {
 		Hostname:     get("HostName"),
 		User:         get("User"),
 		IdentityFile: get("IdentityFile"),
+		ProxyJump:    get("ProxyJump"),
 		Port:         22,
 	}
 	if p := get("Port"); p != "" {
@@ -190,6 +192,8 @@ func parseDisabledBlock(lines []string) (Host, bool) {
 			}
 		case "identityfile":
 			h.IdentityFile = unquote(val)
+		case "proxyjump":
+			h.ProxyJump = unquote(val)
 		case "setenv":
 			if name, value, ok := splitEnv(val); ok {
 				h.EnvVars = append(h.EnvVars, EnvVar{Name: name, Value: value})

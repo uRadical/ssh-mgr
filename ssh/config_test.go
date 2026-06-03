@@ -73,7 +73,7 @@ func TestParseDisabledHost(t *testing.T) {
 func TestRoundTrip(t *testing.T) {
 	in := []Host{
 		{Alias: "a", Hostname: "a.local", User: "u", Port: 22, IdentityFile: "~/.ssh/k",
-			EnvVars: []EnvVar{{"K", "V"}}},
+			ProxyJump: "bastion", EnvVars: []EnvVar{{"K", "V"}}},
 		{Alias: "b", Hostname: "b.local", Port: 2200, Disabled: true},
 	}
 	text := serialize(in)
@@ -108,6 +108,39 @@ func TestParseQuotedIdentityFile(t *testing.T) {
 	disabled := parse(t, "# [ssh-mgr:disabled]\n# Host h\n#     HostName h\n#     IdentityFile \"~/.ssh/metro-vpn-ec2.pem\"\n")
 	if got := disabled[0].IdentityFile; got != "~/.ssh/metro-vpn-ec2.pem" {
 		t.Fatalf("disabled identity = %q want unquoted", got)
+	}
+}
+
+// ProxyJump must survive a read for both enabled and disabled hosts; a missing
+// value (which sshmgr would otherwise drop on the next save) stays empty.
+func TestParseProxyJump(t *testing.T) {
+	enabled := parse(t, "Host h\n    HostName h\n    ProxyJump bastion\n")
+	if got := enabled[0].ProxyJump; got != "bastion" {
+		t.Fatalf("enabled proxyjump = %q want bastion", got)
+	}
+
+	disabled := parse(t, "# [ssh-mgr:disabled]\n# Host h\n#     HostName h\n#     ProxyJump user@bastion:2222\n")
+	if got := disabled[0].ProxyJump; got != "user@bastion:2222" {
+		t.Fatalf("disabled proxyjump = %q want user@bastion:2222", got)
+	}
+}
+
+// A set ProxyJump must appear as -J in the args shared by probe and connect; an
+// unset one must not.
+func TestConnectArgsProxyJump(t *testing.T) {
+	with := strings.Join(ConnectArgs(Host{Hostname: "10.0.0.5", User: "ubuntu", Port: 22, ProxyJump: "bastion"}), " ")
+	if !strings.Contains(with, "-J bastion") {
+		t.Fatalf("ProxyJump missing from args: %q", with)
+	}
+	if !strings.HasSuffix(with, "ubuntu@10.0.0.5") {
+		t.Fatalf("target must be the final arg: %q", with)
+	}
+
+	without := ConnectArgs(Host{Hostname: "h", Port: 2222})
+	for _, a := range without {
+		if a == "-J" {
+			t.Fatalf("unexpected -J in %v", without)
+		}
 	}
 }
 

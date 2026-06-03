@@ -2,7 +2,6 @@ package ui
 
 import (
 	"os/exec"
-	"strconv"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -30,22 +29,7 @@ func NewConnectModal(h ssh.Host, s theme.Styles) ConnectModal {
 // ConnectCmd opens an interactive ssh session to h. tea.ExecProcess hands the
 // terminal to ssh and, on exit, delivers SessionEndedMsg.
 func ConnectCmd(h ssh.Host) tea.Cmd {
-	port := h.Port
-	if port == 0 {
-		port = 22
-	}
-	args := []string{}
-	if h.IdentityFile != "" {
-		args = append(args, "-i", ssh.ExpandPath(h.IdentityFile))
-	}
-	args = append(args, "-p", strconv.Itoa(port))
-	target := h.Hostname
-	if h.User != "" {
-		target = h.User + "@" + h.Hostname
-	}
-	args = append(args, target)
-
-	c := exec.Command("ssh", args...)
+	c := exec.Command("ssh", ssh.ConnectArgs(h)...)
 	return tea.ExecProcess(c, func(error) tea.Msg {
 		return SessionEndedMsg{}
 	})
