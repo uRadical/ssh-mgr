@@ -23,6 +23,7 @@ const (
 	stateFilePicker
 	stateConfirm
 	stateConnectModal
+	stateKnownHost
 	stateError
 )
 
@@ -36,13 +37,19 @@ type Model struct {
 	width  int
 	height int
 
-	edit   ui.EditForm
-	picker ui.FilePicker
-	modal  ui.ConnectModal
+	edit       ui.EditForm
+	picker     ui.FilePicker
+	modal      ui.ConnectModal
+	knownModal ui.KnownHostModal
 
 	pickerReturn state // state to return to from the file picker
 	parseErr     error // malformed-config error -> stateError
 	status       string
+
+	// Pending state while an unknown host key awaits user approval.
+	pendingAdd    string // known_hosts lines to write on confirm
+	pendingAlias  string
+	pendingAction ssh.HostKeyAction
 }
 
 // New constructs the root model. If parseErr is non-nil (malformed
@@ -90,6 +97,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ssh.ConnectResultMsg:
 		m.applyConnectResult(msg)
 		return m, nil
+
+	case ssh.HostKeyMsg:
+		return m.handleHostKeyMsg(msg)
 
 	case ui.SessionEndedMsg:
 		if m.state == stateConnectModal {
@@ -141,6 +151,8 @@ func (m Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleConfirmKey(msg)
 	case stateConnectModal:
 		return m.handleModalKey(msg)
+	case stateKnownHost:
+		return m.handleKnownHostKey(msg)
 	}
 	return m, nil
 }
@@ -188,16 +200,11 @@ func (m Model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.status = "cannot test a disabled host"
 				return m, nil
 			}
-			h.ConnectStatus = ssh.ConnectTesting
-			h.ConnectErr = ""
-			m.status = ""
-			return m, ssh.Probe(*h)
+			return m.beginHostKeyFlow(*h, ssh.HostKeyTest)
 		}
 	case "s":
 		if h := m.selected(); h != nil {
-			m.modal = ui.NewConnectModal(*h, m.styles)
-			m.state = stateConnectModal
-			return m, ui.ConnectCmd(*h)
+			return m.beginHostKeyFlow(*h, ssh.HostKeyConnect)
 		}
 	case "d":
 		if h := m.selected(); h != nil {
@@ -295,6 +302,107 @@ func (m Model) handleModalKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// beginHostKeyFlow starts the user's intent (test or connect). Directly
+// reachable hosts are pre-checked against known_hosts first so an unknown key
+// can be approved in the TUI; ProxyJump hosts (unreachable by ssh-keyscan) and
+// hosts with no HostName fall straight through to ssh's own handling.
+func (m Model) beginHostKeyFlow(h ssh.Host, action ssh.HostKeyAction) (tea.Model, tea.Cmd) {
+	if h.Hostname == "" || h.ProxyJump != "" {
+		return m.startAction(h, action)
+	}
+	m.status = "checking host key…"
+	return m, ssh.CheckHostKey(h, action)
+}
+
+// startAction performs the intent assuming the host key is already trusted.
+func (m Model) startAction(h ssh.Host, action ssh.HostKeyAction) (tea.Model, tea.Cmd) {
+	if action == ssh.HostKeyConnect {
+		m.modal = ui.NewConnectModal(h, m.styles)
+		m.state = stateConnectModal
+		return m, ui.ConnectCmd(h)
+	}
+	m.setStatus(h.Alias, ssh.ConnectTesting, "")
+	m.status = ""
+	return m, ssh.Probe(h)
+}
+
+// handleHostKeyMsg resumes the pending action once the known-host check returns:
+// proceed if known, surface the modal if a new key needs approval, or handle a
+// scan failure per action.
+func (m Model) handleHostKeyMsg(msg ssh.HostKeyMsg) (tea.Model, tea.Cmd) {
+	m.status = ""
+	h := m.hostByAlias(msg.Alias)
+	if h == nil {
+		return m, nil
+	}
+	switch {
+	case msg.Known:
+		return m.startAction(*h, msg.Action)
+	case msg.Err != "":
+		// Couldn't fetch the key. Let an interactive connect fall back to ssh's
+		// own verification; report a test as failed.
+		if msg.Action == ssh.HostKeyConnect {
+			return m.startAction(*h, msg.Action)
+		}
+		m.setStatus(msg.Alias, ssh.ConnectFailed, "host key check failed: "+msg.Err)
+		return m, nil
+	default:
+		m.pendingAdd = msg.Lines
+		m.pendingAlias = msg.Alias
+		m.pendingAction = msg.Action
+		m.knownModal = ui.NewKnownHostModal(*h, msg.Fingerprints, m.styles)
+		m.state = stateKnownHost
+		return m, nil
+	}
+}
+
+// handleKnownHostKey handles approval (y) or rejection (n/esc) of an unknown
+// host key. On approval the key is persisted and the original action resumes.
+func (m Model) handleKnownHostKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "y":
+		lines, alias, action := m.pendingAdd, m.pendingAlias, m.pendingAction
+		m.clearPending()
+		m.state = stateList
+		if err := ssh.AddKnownHost(lines); err != nil {
+			m.setStatus(alias, ssh.ConnectFailed, "could not write known_hosts: "+err.Error())
+			return m, nil
+		}
+		if h := m.hostByAlias(alias); h != nil {
+			return m.startAction(*h, action)
+		}
+		return m, nil
+	case "n", "esc":
+		m.clearPending()
+		m.state = stateList
+		m.status = ""
+	}
+	return m, nil
+}
+
+func (m *Model) clearPending() {
+	m.pendingAdd = ""
+	m.pendingAlias = ""
+}
+
+func (m *Model) hostByAlias(alias string) *ssh.Host {
+	for i := range m.hosts {
+		if m.hosts[i].Alias == alias {
+			return &m.hosts[i]
+		}
+	}
+	return nil
+}
+
+// setStatus updates the transient connect state of the host with the given
+// alias, if it still exists.
+func (m *Model) setStatus(alias string, status ssh.ConnectStatus, errMsg string) {
+	if h := m.hostByAlias(alias); h != nil {
+		h.ConnectStatus = status
+		h.ConnectErr = errMsg
+	}
+}
+
 func (m *Model) applyConnectResult(msg ssh.ConnectResultMsg) {
 	for i := range m.hosts {
 		if m.hosts[i].Alias != msg.HostAlias {
@@ -355,6 +463,8 @@ func (m Model) View() string {
 		return m.overlay(m.styles.Modal.Render(m.picker.View()))
 	case stateConnectModal:
 		return m.center(m.modal.View())
+	case stateKnownHost:
+		return m.center(m.knownModal.View())
 	case stateConfirm:
 		return m.overlay(m.confirmBox())
 	default:
