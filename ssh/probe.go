@@ -22,6 +22,12 @@ type ConnectResultMsg struct {
 // Probe returns a tea.Cmd that tests reachability of h in the background by
 // running a non-interactive ssh that connects and immediately exits. It never
 // blocks the UI; completion is reported via ConnectResultMsg.
+//
+// StrictHostKeyChecking=yes (rather than accept-new) means a probe never
+// silently mutates known_hosts: directly reachable hosts have already had any
+// unknown key approved via the in-TUI modal before Probe runs, and an unknown
+// key on a host the modal can't reach (ProxyJump, no HostName) surfaces here as
+// a clean failure instead.
 func Probe(h Host) tea.Cmd {
 	return func() tea.Msg {
 		// Non-interactive options, then the shared connection args, then a
@@ -29,7 +35,7 @@ func Probe(h Host) tea.Cmd {
 		args := append([]string{
 			"-o", "BatchMode=yes",
 			"-o", "ConnectTimeout=5",
-			"-o", "StrictHostKeyChecking=accept-new",
+			"-o", "StrictHostKeyChecking=yes",
 		}, ConnectArgs(h)...)
 		args = append(args, "exit")
 
@@ -38,14 +44,26 @@ func Probe(h Host) tea.Cmd {
 		elapsed := time.Since(start).Milliseconds()
 
 		if err != nil {
-			msg := strings.TrimSpace(string(out))
-			if msg == "" {
-				msg = err.Error()
-			}
+			msg := probeError(string(out), err)
 			return ConnectResultMsg{HostAlias: h.Alias, OK: false, Err: msg, ElapsedMs: elapsed}
 		}
 		return ConnectResultMsg{HostAlias: h.Alias, OK: true, ElapsedMs: elapsed}
 	}
+}
+
+// probeError turns ssh's combined output into a concise failure message. An
+// unknown host key is reported with an actionable hint, since strict checking
+// means the probe won't add it; the user must connect interactively (which can
+// reach ProxyJump hosts that ssh-keyscan can't) to verify and trust the key.
+func probeError(out string, err error) string {
+	msg := strings.TrimSpace(out)
+	if strings.Contains(msg, "Host key verification failed") {
+		return "unknown host key — connect (s) to verify and trust it"
+	}
+	if msg == "" {
+		return err.Error()
+	}
+	return msg
 }
 
 // ConnectArgs builds the ssh command-line arguments common to probing and
