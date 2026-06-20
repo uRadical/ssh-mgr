@@ -123,6 +123,18 @@ func TestDisabledHostCannotTest(t *testing.T) {
 	}
 }
 
+func TestDisabledHostCannotConnect(t *testing.T) {
+	m := newTestModel()
+	mm, _ := m.Update(key("k")) // select beta (disabled)
+	mm, cmd := mm.(Model).Update(key("s"))
+	if cmd != nil {
+		t.Fatal("expected no connect command for disabled host")
+	}
+	if !strings.Contains(mm.(Model).status, "disabled") {
+		t.Fatalf("status = %q", mm.(Model).status)
+	}
+}
+
 func TestToggleHelpLabelReflectsSelection(t *testing.T) {
 	m := newTestModel() // cursor on alpha (enabled)
 	if !strings.Contains(m.View(), "disable") {

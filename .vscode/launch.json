@@ -1,0 +1,25 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // Build + run under Delve with breakpoints. ssh-mgr is a full-screen
+      // Bubble Tea TUI, so it must run in the integrated terminal (a real
+      // pty) — the Debug Console has no TTY and the alternate screen won't
+      // render there.
+      "name": "Debug ssh-mgr",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "${workspaceFolder}/cmd/ssh-mgr",
+      "console": "integratedTerminal"
+    },
+    {
+      // Debug the tests in the package of the currently open file.
+      "name": "Debug current package tests",
+      "type": "go",
+      "request": "launch",
+      "mode": "test",
+      "program": "${fileDirname}"
+    }
+  ]
+}

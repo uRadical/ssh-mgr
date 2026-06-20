@@ -204,6 +204,10 @@ func (m Model) handleListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "s":
 		if h := m.selected(); h != nil {
+			if h.Disabled {
+				m.status = "cannot connect to a disabled host"
+				return m, nil
+			}
 			return m.beginHostKeyFlow(*h, ssh.HostKeyConnect)
 		}
 	case "d":

@@ -1,0 +1,25 @@
+{
+  // Use gopls (the Go language server) for code intelligence and formatting.
+  "go.useLanguageServer": true,
+
+  // Lint with golangci-lint (v2) on every save, scoped to the saved file's package.
+  "go.lintTool": "golangci-lint",
+  "go.lintOnSave": "package",
+  "go.vetOnSave": "package",
+
+  // Format + organize imports on save. gopls applies gofmt and goimports-style
+  // import management, which is exactly what `goimports` does (add/remove and
+  // group imports). The external goimports binary is also honoured below.
+  "go.formatTool": "goimports",
+
+  "[go]": {
+    "editor.defaultFormatter": "golang.go",
+    "editor.formatOnSave": true,
+    "editor.codeActionsOnSave": {
+      "source.organizeImports": "explicit"
+    }
+  },
+
+  // Trim trailing whitespace in Go files but leave generated test data alone.
+  "files.insertFinalNewline": true
+}

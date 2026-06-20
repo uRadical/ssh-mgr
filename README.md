@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/github_social_preview.png.png" alt="ssh-mgr">
+</p>
+
 # ssh-mgr
 
 A terminal UI for managing your `~/.ssh/config` host entries.
