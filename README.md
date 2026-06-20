@@ -130,4 +130,10 @@ make clean     # remove build artifacts
 
 ## License
 
-Copyright © uradical. All rights reserved.
+Copyright © 2026 uradical.
+
+ssh-mgr is free software: you can redistribute it and/or modify it under the
+terms of the [GNU General Public License](LICENSE) as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. It is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; see the [LICENSE](LICENSE) file for details.
